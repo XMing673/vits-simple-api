@@ -1,4 +1,4 @@
-INSTALL_DIR=/usr/local/vits-simple-api
+INSTALL_DIR=/opt/1panel/docker/compose/vits-simple-api
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
