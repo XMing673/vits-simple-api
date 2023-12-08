@@ -130,7 +130,7 @@ class TTSManager(Observer):
                 length = float(element.attrib.get("length", root.attrib.get("length", config.LENGTH)))
                 noise = float(element.attrib.get("noise", root.attrib.get("noise", config.NOISE)))
                 noisew = float(element.attrib.get("noisew", root.attrib.get("noisew", config.NOISEW)))
-                max = int(element.attrib.get("max", root.attrib.get("max", "0")))
+                segment_size = int(element.attrib.get("segment_size", root.attrib.get("segment_size", "0")))
                 # 不填写默认就是vits
                 model_type = element.attrib.get("model_type", root.attrib.get("model_type", "vits"))
                 # w2v2-vits/emotion-vits才有emotion
@@ -170,7 +170,7 @@ class TTSManager(Observer):
                                             "length": length,
                                             "noise": noise,
                                             "noisew": noisew,
-                                            "max": max,
+                                            "segment_size": segment_size,
                                             "model_type": model_type,
                                             "emotion": emotion,
                                             "sdp_ratio": sdp_ratio,
@@ -222,13 +222,16 @@ class TTSManager(Observer):
 
     def vits_infer(self, state, encode=True):
         model = self.get_model(ModelType.VITS, state["id"])
+        if config["DYNAMIC_LOADING"]:
+            model.load_model()
         state["id"] = self.get_real_id(ModelType.VITS, state["id"])  # Change to real id
         # 去除所有多余的空白字符
         if state["text"] is not None:
             state["text"] = re.sub(r'\s+', ' ', state["text"]).strip()
         sampling_rate = model.sampling_rate
 
-        sentences_list = sentence_split_and_markup(state["text"], state["max"], state["lang"], state["speaker_lang"])
+        sentences_list = sentence_split_and_markup(state["text"], state["segment_size"], state["lang"],
+                                                   state["speaker_lang"])
         # 停顿0.5s，避免语音分段合成再拼接后的连接突兀
         brk = np.zeros(int(0.5 * sampling_rate), dtype=np.int16)
 
@@ -242,19 +245,9 @@ class TTSManager(Observer):
                 audios.append(brk)
 
         audio = np.concatenate(audios, axis=0)
+        if config["DYNAMIC_LOADING"]:
+            model.release_model()
         return self.encode(sampling_rate, audio, state["format"]) if encode else audio
-
-    def stream_vits_infer(self, task, fname=None):
-        format = task.get("format", "wav")
-        voice_obj = self._voice_obj[ModelType.VITS][task.get("id")][1]
-        task["id"] = self._voice_obj[ModelType.VITS][task.get("id")][0]
-        sampling_rate = voice_obj.sampling_rate
-        genertator = voice_obj.get_stream_audio(task, auto_break=True)
-        # audio = BytesIO()
-        for chunk in genertator:
-            encoded_audio = self.encode(sampling_rate, chunk, format)
-            for encoded_audio_chunk in self.generate_audio_chunks(encoded_audio):
-                yield encoded_audio_chunk
 
     def stream_vits_infer(self, state, fname=None):
         model = self.get_model(ModelType.VITS, state["id"])
@@ -265,7 +258,8 @@ class TTSManager(Observer):
             state["text"] = re.sub(r'\s+', ' ', state["text"]).strip()
         sampling_rate = model.sampling_rate
 
-        sentences_list = sentence_split_and_markup(state["text"], state["max"], state["lang"], state["speaker_lang"])
+        sentences_list = sentence_split_and_markup(state["text"], state["segment_size"], state["lang"],
+                                                   state["speaker_lang"])
         # 停顿0.5s，避免语音分段合成再拼接后的连接突兀
         brk = np.zeros(int(0.5 * sampling_rate), dtype=np.int16)
 
@@ -307,7 +301,8 @@ class TTSManager(Observer):
 
         sampling_rate = model.sampling_rate
 
-        sentences_list = sentence_split_and_markup(state["text"], state["max"], state["lang"], state["speaker_lang"])
+        sentences_list = sentence_split_and_markup(state["text"], state["segment_size"], state["lang"],
+                                                   state["speaker_lang"])
         # 停顿0.5s，避免语音分段合成再拼接后的连接突兀
         brk = np.zeros(int(0.5 * sampling_rate), dtype=np.int16)
 
@@ -352,19 +347,34 @@ class TTSManager(Observer):
     def bert_vits2_infer(self, state, encode=True):
         model = self.get_model(model_type=ModelType.BERT_VITS2, id=state["id"])
         state["id"] = self.get_real_id(model_type=ModelType.BERT_VITS2, id=state["id"])
+
+        # 去除所有多余的空白字符
+        if state["text"] is not None:
+            state["text"] = re.sub(r'\s+', ' ', state["text"]).strip()
         sampling_rate = model.sampling_rate
 
         # if state["lang"] == "auto":
         # state["lang"] = classify_language(state["text"], target_languages=model.lang)
-
-        sentences_list = split_by_language(state["text"], state["speaker_lang"])
+        if state["lang"] == "auto":
+            sentences_list = split_by_language(state["text"], state["speaker_lang"])
+        else:
+            sentences_list = [(state["text"], state["lang"])]
         audios = []
 
         for (text, lang) in sentences_list:
-            sentences = sentence_split(text, state["max"])
+            sentences = sentence_split(text, state["segment_size"])
+            if lang == 'zh' and state["length_zh"] > 0:
+                length = state["length_zh"]
+            elif lang == 'ja' and state["length_ja"] > 0:
+                length = state["length_ja"]
+            elif lang == 'en' and state["length_en"] > 0:
+                length = state["length_en"]
+            else:
+                length = state["length"]
             for sentence in sentences:
                 audio = model.infer(sentence, state["id"], lang, state["sdp_ratio"], state["noise"],
-                                    state["noise"], state["length"])
+                                    state["noise"], length, emotion=state["emotion"],
+                                    reference_audio=state["reference_audio"])
                 audios.append(audio)
         audio = np.concatenate(audios)
 
@@ -384,10 +394,11 @@ class TTSManager(Observer):
         # audios = []
 
         for (text, lang) in sentences_list:
-            sentences = sentence_split(text, state["max"])
+            sentences = sentence_split(text, state["segment_size"])
             for sentence in sentences:
                 audio = model.infer(sentence, state["id"], lang, state["sdp_ratio"], state["noise"],
-                                    state["noise"], state["length"])
+                                    state["noise"], state["length"], emotion=state["emotion"],
+                                    reference_audio=state["reference_audio"])
                 # audios.append(audio)
                 # audio = np.concatenate(audios, axis=0)
                 encoded_audio = self.encode(sampling_rate, audio, state["format"])

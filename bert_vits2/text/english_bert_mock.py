@@ -1,17 +1,17 @@
 import torch
 
-from utils.config_manager import global_config as config
+from utils.config_manager import global_config
 
 
 
-def get_bert_feature(text, word2ph, tokenizer, model, device=config.DEVICE):
+def get_bert_feature(text, word2ph, tokenizer, model, device=global_config.DEVICE):
     with torch.no_grad():
         inputs = tokenizer(text, return_tensors="pt")
         for i in inputs:
             inputs[i] = inputs[i].to(device)
         res = model(**inputs, output_hidden_states=True)
         res = torch.cat(res["hidden_states"][-3:-2], -1)[0].cpu()
-    # assert len(word2ph) == len(text)+2
+    assert len(word2ph) == res.shape[0], (text, res.shape[0], len(word2ph))
     word2phone = word2ph
     phone_level_feature = []
     for i in range(len(word2phone)):

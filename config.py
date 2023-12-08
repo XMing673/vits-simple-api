@@ -68,7 +68,7 @@ MODEL_LIST = [
     # VITS
     # [ABS_PATH + "/Model/Nene_Nanami_Rong_Tang/1374_epochs.pth", ABS_PATH + "/Model/Nene_Nanami_Rong_Tang/config.json"],
     # [ABS_PATH + "/Model/Zero_no_tsukaima/1158_epochs.pth", ABS_PATH + "/Model/Zero_no_tsukaima/config.json"],
-    [ABS_PATH + "/Model/g/G_953000.pth", ABS_PATH + "/Model/g/config.json"],
+    # [ABS_PATH + "/Model/g/G_953000.pth", ABS_PATH + "/Model/g/config.json"],
     # [ABS_PATH + "/Model/vits_chinese/vits_bert_model.pth", ABS_PATH + "/Model/vits_chinese/bert_vits.json"],
     # HuBert-VITS (Need to configure HUBERT_SOFT_MODEL)
     # [ABS_PATH + "/Model/louise/360_epochs.pth", ABS_PATH + "/Model/louise/config.json"],
@@ -92,6 +92,9 @@ DIMENSIONAL_EMOTION_NPY = ABS_PATH + "/Model/npy"
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# VITS
+DYNAMIC_LOADING = False
+
 """
 Default parameter
 """
@@ -100,7 +103,7 @@ ID = 0
 
 FORMAT = "wav"
 
-LANG = "AUTO"
+LANG = "auto"
 
 LENGTH = 1
 
@@ -108,9 +111,12 @@ NOISE = 0.33
 
 NOISEW = 0.4
 
-# 长文本分段阈值，max<=0表示不分段.
-# Batch processing threshold. Text will not be processed in batches if max<=0
-MAX = 50
+# 长文本分段阈值，segment_size<=0表示不分段.
+# Batch processing threshold. Text will not be processed in batches if segment_size<=0
+SEGMENT_SIZE = 50
 
 # Bert_VITS2
 SDP_RATIO = 0.2
+LENGTH_ZH = 0
+LENGTH_JA = 0
+LENGTH_EN = 0

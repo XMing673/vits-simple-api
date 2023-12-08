@@ -25,6 +25,8 @@ BERT_BASE_JAPANESE_V3 = os.path.join(config.ABS_PATH, "bert_vits2/bert/bert-base
 BERT_LARGE_JAPANESE_V2 = os.path.join(config.ABS_PATH, "bert_vits2/bert/bert-large-japanese-v2")
 DEBERTA_V2_LARGE_JAPANESE = os.path.join(config.ABS_PATH, "bert_vits2/bert/deberta-v2-large-japanese")
 DEBERTA_V3_LARGE = os.path.join(config.ABS_PATH, "bert_vits2/bert/deberta-v3-large")
+WAV2VEC2_LARGE_ROBUST_12_FT_EMOTION_MSP_DIM = os.path.join(config.ABS_PATH,
+                                                           "bert_vits2/emotional/wav2vec2-large-robust-12-ft-emotion-msp-dim")
 
 
 class ModelManager(Subject):
@@ -57,6 +59,8 @@ class ModelManager(Subject):
         self.tts_front = None
         self.bert_models = {}
         self.bert_handler = None
+        self.emotion_model = None
+        self.processor = None
 
         # self.sid2model = []
         # self.name_mapping_id = []
@@ -166,15 +170,18 @@ class ModelManager(Subject):
         }
 
         model_class = self.model_class_map[model_type]
+        model = model_class(**model_args)
 
         if model_type == ModelType.VITS:
             bert_embedding = getattr(hps.data, 'bert_embedding', getattr(hps.model, 'bert_embedding', False))
             if bert_embedding and self.tts_front is None:
                 self.load_VITS_PinYin_model(os.path.join(config.ABS_PATH, "vits/bert"))
+            if not config["DYNAMIC_LOADING"]:
+                model.load_model()
 
         if model_type == ModelType.W2V2_VITS:
             if self.emotion_reference is None:
-                self.emotion_reference = self.load_npy(config["model_config"]["dimensional_emotion_model"])
+                self.emotion_reference = self.load_npy(config["model_config"]["dimensional_emotion_npy"])
             model_args.update({"emotion_reference": self.emotion_reference,
                                "dimensional_emotion_model": self.dimensional_emotion_model})
 
@@ -183,8 +190,6 @@ class ModelManager(Subject):
                 self.hubert = self.load_hubert_model(config["model_config"]["hubert_soft_model"])
             model_args.update({"hubert": self.hubert})
 
-        model = model_class(**model_args)
-
         if model_type == ModelType.BERT_VITS2:
             bert_model_names = model.bert_model_names
             for bert_model_name in bert_model_names.values():
@@ -192,7 +197,19 @@ class ModelManager(Subject):
                     from bert_vits2.text.bert_handler import BertHandler
                     self.bert_handler = BertHandler(self.device)
                 self.bert_handler.load_bert(bert_model_name)
-            model.load_model(self.bert_handler)
+            if model.hps_ms.model.emotion_embedding:
+                if self.emotion_model is None:
+                    from transformers import Wav2Vec2Processor
+                    self.load_emotion_model(WAV2VEC2_LARGE_ROBUST_12_FT_EMOTION_MSP_DIM)
+                if self.processor is None:
+                    self.processor = Wav2Vec2Processor.from_pretrained(
+                        WAV2VEC2_LARGE_ROBUST_12_FT_EMOTION_MSP_DIM)
+
+            model.load_model(
+                self.bert_handler,
+                emotion_model=self.emotion_model,
+                processor=self.processor
+            )
 
         sid2model = []
         speakers = []
@@ -221,9 +238,17 @@ class ModelManager(Subject):
 
     def load_model(self, model_path: str, config_path: str):
         try:
-            folder_path = os.path.join(config.ABS_PATH, 'Model')
-            model_path = model_path if os.path.isabs(model_path) else os.path.join(folder_path, model_path)
-            config_path = config_path if os.path.isabs(config_path) else os.path.join(folder_path, config_path)
+            model_path = os.path.normpath(model_path)
+            if model_path.startswith('Model'):
+                model_path = os.path.join(config.ABS_PATH, model_path)
+            else:
+                model_path = os.path.join(config.ABS_PATH, 'Model', model_path)
+
+            config_path = os.path.normpath(config_path)
+            if config_path.startswith('Model'):
+                config_path = os.path.join(config.ABS_PATH, config_path)
+            else:
+                config_path = os.path.join(config.ABS_PATH, 'Model', config_path)
 
             model_data = self._load_model_from_path(model_path, config_path)
             model_id = model_data["model_id"]
@@ -323,6 +348,11 @@ class ModelManager(Subject):
         from vits.text.vits_pinyin import VITS_PinYin
         if self.tts_front is None:
             self.tts_front = VITS_PinYin(bert_path, self.device)
+
+    def load_emotion_model(self, model_path):
+        """Bert-VITS2 v2.1 EmotionModel"""
+        from bert_vits2.get_emo import EmotionModel
+        self.emotion_model = EmotionModel.from_pretrained(model_path).to(self.device)
 
     def reorder_model(self, old_index, new_index):
         """重新排序模型，将old_index位置的模型移动到new_index位置"""

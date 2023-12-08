@@ -1,3 +1,4 @@
+import os
 import time
 import uuid
 from io import BytesIO
@@ -13,6 +14,31 @@ from tts_app.voice_api.utils import *
 from utils.data_utils import check_is_none
 
 voice_api = Blueprint("voice_api", __name__)
+
+
+def get_param(request_data, key, default, data_type=None):
+    if key == "segment_size" and "max" in request_data:
+        logger.warning(
+            "The 'max' parameter is deprecated and will be phased out in the future. Please use 'segment_size' instead.")
+        return get_param(request_data, "max", default, data_type)
+
+    value = request_data.get(key, "")
+
+    if data_type:
+        try:
+            value = data_type(value)
+        except:
+            value = default
+
+    if value == "":
+        value = default
+
+    return value
+
+
+@voice_api.route('/default_parameter', methods=["GET", "POST"])
+def default_parameter():
+    return jsonify(current_app.config.get("default_parameter"))
 
 
 @voice_api.route('/speakers', methods=["GET", "POST"])
@@ -34,21 +60,21 @@ def voice_vits_api():
             else:
                 request_data = request.form
 
-        text = request_data.get("text", "")
-        id = int(request_data.get("id", current_app.config.get("ID", 0)))
-        format = request_data.get("format", current_app.config.get("FORMAT", "wav"))
-        lang = request_data.get("lang", current_app.config.get("LANG", "auto")).lower()
-        length = float(request_data.get("length", current_app.config.get("LENGTH", 1)))
-        noise = float(request_data.get("noise", current_app.config.get("NOISE", 0.667)))
-        noisew = float(request_data.get("noisew", current_app.config.get("NOISEW", 0.8)))
-        max = int(request_data.get("max", current_app.config.get("MAX", 50)))
-        use_streaming = request_data.get('streaming', False, type=bool)
+        text = get_param(request_data, "text", "", str)
+        id = get_param(request_data, "id", current_app.config.get("ID", 0), int)
+        format = get_param(request_data, "format", current_app.config.get("FORMAT", "wav"), str)
+        lang = get_param(request_data, "lang", current_app.config.get("LANG", "auto"), str).lower()
+        length = get_param(request_data, "length", current_app.config.get("LENGTH", 1), float)
+        noise = get_param(request_data, "noise", current_app.config.get("NOISE", 0.667), float)
+        noisew = get_param(request_data, "noisew", current_app.config.get("NOISEW", 0.8), float)
+        segment_size = get_param(request_data, "segment_size", current_app.config.get("SEGMENT_SIZE", 50), int)
+        use_streaming = get_param(request_data, 'streaming', False, bool)
     except Exception as e:
         logger.error(f"[{ModelType.VITS.value}] {e}")
         return make_response("parameter error", 400)
 
     logger.info(
-        f"[{ModelType.VITS.value}] id:{id} format:{format} lang:{lang} length:{length} noise:{noise} noisew:{noisew}")
+        f"[{ModelType.VITS.value}] id:{id} format:{format} lang:{lang} length:{length} noise:{noise} noisew:{noisew} segment_size:{segment_size}")
     logger.info(f"[{ModelType.VITS.value}] len:{len(text)} text：{text}")
 
     if check_is_none(text):
@@ -86,7 +112,7 @@ def voice_vits_api():
              "length": length,
              "noise": noise,
              "noisew": noisew,
-             "max": max,
+             "segment_size": segment_size,
              "lang": lang,
              "speaker_lang": speaker_lang}
 
@@ -116,12 +142,12 @@ def voice_hubert_api():
     if request.method == "POST":
         try:
             voice = request.files['upload']
-            id = int(request.form.get("id"))
-            format = request.form.get("format", current_app.config.get("LANG", "auto"))
-            length = float(request.form.get("length", current_app.config.get("LENGTH", 1)))
-            noise = float(request.form.get("noise", current_app.config.get("NOISE", 0.667)))
-            noisew = float(request.form.get("noisew", current_app.config.get("NOISEW", 0.8)))
-            use_streaming = request.form.get('streaming', False, type=bool)
+            id = get_param(request.form, "id", 0, int)
+            format = get_param(request.form, "format", current_app.config.get("LANG", "auto"))
+            length = get_param(request.form, "length", current_app.config.get("LENGTH", 1), float)
+            noise = get_param(request.form, "noise", current_app.config.get("NOISE", 0.667), float)
+            noisew = get_param(request.form, "noisew", current_app.config.get("NOISEW", 0.8), float)
+            use_streaming = get_param(request.form, 'streaming', False, bool)
         except Exception as e:
             logger.error(f"[{ModelType.HUBERT_VITS.value}] {e}")
             return make_response("parameter error", 400)
@@ -181,23 +207,23 @@ def voice_w2v2_api():
             else:
                 request_data = request.form
 
-        text = request_data.get("text", "")
-        id = int(request_data.get("id", current_app.config.get("ID", 0)))
-        format = request_data.get("format", current_app.config.get("FORMAT", "wav"))
-        lang = request_data.get("lang", current_app.config.get("LANG", "auto")).lower()
-        length = float(request_data.get("length", current_app.config.get("LENGTH", 1)))
-        noise = float(request_data.get("noise", current_app.config.get("NOISE", 0.667)))
-        noisew = float(request_data.get("noisew", current_app.config.get("NOISEW", 0.8)))
-        max = int(request_data.get("max", current_app.config.get("MAX", 50)))
-        emotion = int(request_data.get("emotion", current_app.config.get("EMOTION", 0)))
-        emotion_reference = request_data.get("emotion_reference", None)
-        use_streaming = request_data.get('streaming', False, type=bool)
+        text = get_param(request_data, "text", "", str)
+        id = get_param(request_data, "id", current_app.config.get("ID", 0), int)
+        format = get_param(request_data, "format", current_app.config.get("FORMAT", "wav"), str)
+        lang = get_param(request_data, "lang", current_app.config.get("LANG", "auto"), str).lower()
+        length = get_param(request_data, "length", current_app.config.get("LENGTH", 1), float)
+        noise = get_param(request_data, "noise", current_app.config.get("NOISE", 0.667), float)
+        noisew = get_param(request_data, "noisew", current_app.config.get("NOISEW", 0.8), float)
+        segment_size = get_param(request_data, "segment_size", current_app.config.get("SEGMENT_SIZE", 50), int)
+        emotion = get_param(request_data, "emotion", current_app.config.get("EMOTION", 0), int)
+        emotion_reference = get_param(request_data, "emotion_reference", None, str)
+        use_streaming = get_param(request_data, 'streaming', False, bool)
     except Exception as e:
         logger.error(f"[{ModelType.W2V2_VITS.value}] {e}")
         return make_response(f"parameter error", 400)
 
     logger.info(f"[{ModelType.W2V2_VITS.value}] id:{id} format:{format} lang:{lang} "
-                f"length:{length} noise:{noise} noisew:{noisew} emotion:{emotion}")
+                f"length:{length} noise:{noise} noisew:{noisew} emotion:{emotion} segment_size:{segment_size}")
     logger.info(f"[{ModelType.W2V2_VITS.value}] len:{len(text)} text：{text}")
 
     if check_is_none(text):
@@ -235,7 +261,7 @@ def voice_w2v2_api():
             "length": length,
             "noise": noise,
             "noisew": noisew,
-            "max": max,
+            "segment_size": segment_size,
             "lang": lang,
             "emotion": emotion,
             "emotion_reference": emotion_reference,
@@ -268,10 +294,10 @@ def vits_voice_conversion_api():
     if request.method == "POST":
         try:
             voice = request.files['upload']
-            original_id = int(request.form["original_id"])
-            target_id = int(request.form["target_id"])
-            format = request.form.get("format", voice.filename.split(".")[1])
-            use_streaming = request.form.get('streaming', False, type=bool)
+            original_id = get_param(request.form, "original_id", 0, int)
+            target_id = get_param(request.form, "target_id", 0, int)
+            format = get_param(request.form, "format", voice.filename.split(".")[1], str)
+            use_streaming = get_param(request.form, 'streaming', False, bool)
         except Exception as e:
             logger.error(f"[vits_voice_convertsion] {e}")
             return make_response("parameter error", 400)
@@ -345,7 +371,6 @@ def dimensional_emotion_api():
     if request.method == "POST":
         try:
             audio = request.files['upload']
-            use_streaming = request.form.get('streaming', False, type=bool)
         except Exception as e:
             logger.error(f"[dimensional_emotion] {e}")
             return make_response("parameter error", 400)
@@ -355,14 +380,7 @@ def dimensional_emotion_api():
     file_type = "application/octet-stream; charset=ascii"
     fname = os.path.splitext(audio.filename)[0] + ".npy"
     emotion_npy = tts_manager.get_dimensional_emotion_npy(content)
-    if use_streaming:
-        emotion_npy = tts_manager.generate_audio_chunks(emotion_npy)
-        response = make_response(emotion_npy)
-        response.headers['Content-Disposition'] = f'attachment; filename={fname}'
-        response.headers['Content-Type'] = file_type
-        return response
-    else:
-        return send_file(path_or_file=emotion_npy, mimetype=file_type, download_name=fname)
+    return send_file(path_or_file=emotion_npy, mimetype=file_type, download_name=fname)
 
 
 @voice_api.route('/bert-vits2', methods=["GET", "POST"])
@@ -378,22 +396,28 @@ def voice_bert_vits2_api():
             else:
                 request_data = request.form
 
-        text = request_data.get("text", "")
-        id = int(request_data.get("id", current_app.config.get("ID", 0)))
-        format = request_data.get("format", current_app.config.get("FORMAT", "wav"))
-        lang = request_data.get("lang", "auto").lower()
-        length = float(request_data.get("length", current_app.config.get("LENGTH", 1)))
-        noise = float(request_data.get("noise", current_app.config.get("NOISE", 0.667)))
-        noisew = float(request_data.get("noisew", current_app.config.get("NOISEW", 0.8)))
-        sdp_ratio = float(request_data.get("sdp_ratio", current_app.config.get("SDP_RATIO", 0.2)))
-        max = int(request_data.get("max", current_app.config.get("MAX", 50)))
-        use_streaming = request_data.get('streaming', False, type=bool)
+        text = get_param(request_data, "text", "", str)
+        id = get_param(request_data, "id", current_app.config.get("ID", 0), int)
+        format = get_param(request_data, "format", current_app.config.get("FORMAT", "wav"), str)
+        lang = get_param(request_data, "lang", current_app.config.get("LANG", "auto"), str).lower()
+        length = get_param(request_data, "length", current_app.config.get("LENGTH", 1), float)
+        length_zh = get_param(request_data, "length_zh", current_app.config.get("LENGTH_ZH", 0), float)
+        length_ja = get_param(request_data, "length_ja", current_app.config.get("LENGTH_JA", 0), float)
+        length_en = get_param(request_data, "length_en", current_app.config.get("LENGTH_EN", 0), float)
+        noise = get_param(request_data, "noise", current_app.config.get("NOISE", 0.667), float)
+        noisew = get_param(request_data, "noisew", current_app.config.get("NOISEW", 0.8), float)
+        sdp_ratio = get_param(request_data, "sdp_ratio", current_app.config.get("SDP_RATIO", 0.2), float)
+        segment_size = get_param(request_data, "segment_size", current_app.config.get("SEGMENT_SIZE", 50), int)
+        use_streaming = get_param(request_data, 'streaming', False, bool)
+        emotion = get_param(request_data, 'emotion', None, int)
+        reference_audio = request.files.get("reference_audio", None)
     except Exception as e:
         logger.error(f"[{ModelType.BERT_VITS2.value}] {e}")
         return make_response("parameter error", 400)
 
     logger.info(
-        f"[{ModelType.BERT_VITS2.value}] id:{id} format:{format} lang:{lang} length:{length} noise:{noise} noisew:{noisew} sdp_ratio:{sdp_ratio}")
+        f"[{ModelType.BERT_VITS2.value}] id:{id} format:{format} lang:{lang} length:{length} noise:{noise} noisew:{noisew} sdp_ratio:{sdp_ratio} segment_size:{segment_size}"
+        f" length_zh:{length_zh} length_ja:{length_ja} length_en:{length_en}")
     logger.info(f"[{ModelType.BERT_VITS2.value}] len:{len(text)} text：{text}")
 
     if check_is_none(text):
@@ -407,6 +431,10 @@ def voice_bert_vits2_api():
     if id < 0 or id >= model_manager.bert_vits2_speakers_count:
         logger.info(f"[{ModelType.BERT_VITS2.value}] speaker id {id} does not exist")
         return make_response(jsonify({"status": "error", "message": f"id {id} does not exist"}), 400)
+
+    if emotion and (emotion < 0 or emotion > 9):
+        logger.info(f"[{ModelType.BERT_VITS2.value}] emotion {emotion} out of the range 0-9")
+        return make_response(jsonify({"status": "error", "message": f"emotion {emotion} out of the range 0-9"}), 400)
 
     # 校验模型是否支持输入的语言
     speaker_lang = model_manager.voice_speakers[ModelType.BERT_VITS2.value][id].get('lang')
@@ -426,16 +454,21 @@ def voice_bert_vits2_api():
     fname = f"{str(uuid.uuid1())}.{format}"
     file_type = f"audio/{format}"
     state = {"text": text,
-            "id": id,
-            "format": format,
-            "length": length,
-            "noise": noise,
-            "noisew": noisew,
-            "sdp_ratio": sdp_ratio,
-            "max": max,
-            "lang": lang,
-            "speaker_lang": speaker_lang}
-    
+             "id": id,
+             "format": format,
+             "length": length,
+             "length_zh": length_zh,
+             "length_ja": length_ja,
+             "length_en": length_en,
+             "noise": noise,
+             "noisew": noisew,
+             "sdp_ratio": sdp_ratio,
+             "segment_size": segment_size,
+             "lang": lang,
+             "speaker_lang": speaker_lang,
+             "emotion": emotion,
+             "reference_audio": reference_audio}
+
     if use_streaming:
         audio = tts_manager.stream_bert_vits2_infer(state)
         response = make_response(audio)
@@ -447,8 +480,6 @@ def voice_bert_vits2_api():
         audio = tts_manager.bert_vits2_infer(state)
         t2 = time.time()
         logger.info(f"[{ModelType.BERT_VITS2.value}] finish in {(t2 - t1):.2f}s")
-
-    
 
     if current_app.config.get("SAVE_AUDIO", False):
         logger.debug(f"[{ModelType.BERT_VITS2.value}] {fname}")
@@ -505,10 +536,3 @@ def check():
     logger.info(f"[check] check id:{id} name:{name} lang:{lang}")
 
     return make_response(jsonify({"status": "success", "id": id, "name": name, "lang": lang}), 200)
-
-    # regular cleaning
-    @scheduler.task('interval', id='clean_task', seconds=current_app.config.get("CLEAN_INTERVAL_SECONDS", 3600),
-                    misfire_grace_time=900)
-    def clean_task():
-        clean_folder(current_app.config["UPLOAD_FOLDER"])
-        clean_folder(current_app.config["CACHE_PATH"])

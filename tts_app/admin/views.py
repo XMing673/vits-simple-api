@@ -50,9 +50,14 @@ def load_model():
                  f"model_path: {model_path}\n"
                  f"config_path: {config_path}")
     state = model_manager.load_model(model_path, config_path)
-    status = "success" if state else "failed"
+    if state:
+        status = "success"
+        response_code = 200
+    else:
+        status = "failed"
+        response_code = 500
 
-    return make_response(jsonify({"status": status}), 200)
+    return make_response(jsonify({"status": status}), response_code)
 
 
 @admin.route('/unload_model', methods=["GET", "POST"])
@@ -72,9 +77,14 @@ def unload_model():
     logging.info(f"Unloading model. model_type: {model_type} model_id: {model_id}")
 
     state = model_manager.unload_model(model_type, model_id)
-    status = "success" if state else "failed"
+    if state:
+        status = "success"
+        response_code = 200
+    else:
+        status = "failed"
+        response_code = 500
 
-    return make_response(jsonify({"status": status}), 200)
+    return make_response(jsonify({"status": status}), response_code)
 
 
 @admin.route('/get_path', methods=["GET", "POST"])
@@ -90,7 +100,7 @@ def get_config():
     dict_data["DEVICE"] = str(dict_data["DEVICE"])
 
     dict_data = user2str(dict_data)
-
+    
     return jsonify(dict_data)
 
 
@@ -109,6 +119,7 @@ def set_config():
     if dict_data.get("users", None) is not None:
         dict_data = str2user(dict_data)
     dict_data = config_manager.validate_and_convert_data(dict_data)
+    dict_data["model_config"]["model_list"] = global_config["model_config"]["model_list"]
     global_config.update(dict_data)
     config_manager.save_yaml_config(global_config)
 
@@ -121,15 +132,14 @@ def set_config():
 def save_current_model():
     try:
         models_path = model_manager.get_models_path()
-
-        dict_data = {"model_config": {"model_list": models_path}}
-        global_config.update(dict_data)
+        model_list = {"model_list": models_path}
+        global_config["model_config"].update(model_list)
         config_manager.save_yaml_config(global_config)
 
         status = "success"
-        code = 200
+        response_code = 200
     except Exception as e:
-        status = "error"
-        code = 500
+        status = "failed"
+        response_code = 500
         logging.info(e)
-    return make_response(jsonify({"status": status}), code)
+    return make_response(jsonify({"status": status}), response_code)

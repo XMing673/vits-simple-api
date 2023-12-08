@@ -89,10 +89,13 @@ function set_config() {
             id: $('#id').val(),
             lang: $('#lang').val(),
             length: $('#length').val(),
-            max: $('#max').val(),
+            segment_size: $('#segment_size').val(),
             noise: $('#noise').val(),
             noisew: $('#noisew').val(),
-            sdp_ratio: $('#sdp_ratio').val()
+            sdp_ratio: $('#sdp_ratio').val(),
+            length_zh: $('#length_zh').val(),
+            length_ja: $('#length_ja').val(),
+            length_en: $('#length_en').val()
         },
         model_config: {
             dimensional_emotion_npy: $('#dimensional_emotion_npy').val(),
@@ -104,6 +107,7 @@ function set_config() {
         LOGS_BACKUPCOUNT: $('#log-backupcount').val(),
         LOGS_PATH: $('#logs-path').val(),
         LANGUAGE_AUTOMATIC_DETECT: $('#detect').val(),
+        users: {admin: {admin: {id: 1, username: $('#username').val(), password: $('#password').val()}}}
 
     }
 
